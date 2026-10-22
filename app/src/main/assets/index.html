@@ -1,0 +1,128 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link href="https://fonts.googleapis.com/css2?family=VT323&display=swap" rel="stylesheet">
+<style>
+  html, body { margin: 0; height: 100%; background: #000; overflow: hidden; font-family: 'VT323', monospace; color: #fff; }
+  /* The YouTube player only supplies the sound; the GIF covers it, as on lofi.cafe. */
+  #yt { position: fixed; right: 0; bottom: 0; width: 320px; height: 180px; z-index: 0; }
+  .layer { position: fixed; inset: 0; width: 100%; height: 100%; object-fit: cover; image-rendering: pixelated; z-index: 1; }
+  #static { z-index: 2; display: none; }
+  #info { position: fixed; left: 48px; bottom: 40px; z-index: 3; text-shadow: 0 2px 6px #000; transition: opacity .4s; }
+  #info.hidden { opacity: 0; }
+  #num { font-size: 30px; color: #7CFF7C; }
+  #name { font-size: 44px; max-width: 1400px; }
+  #state { font-size: 28px; color: #ddd; margin-top: 6px; }
+  #hint { font-size: 22px; color: #aaa; margin-top: 10px; }
+  #clock { position: fixed; right: 48px; top: 32px; z-index: 3; font-size: 48px; text-shadow: 0 2px 6px #000; }
+</style>
+</head>
+<body>
+<div id="yt"><div id="player"></div></div>
+<img id="bg" class="layer" alt="">
+<img id="static" class="layer" alt="">
+<div id="clock"></div>
+<div id="info">
+  <div id="num"></div>
+  <div id="name"></div>
+  <div id="state"></div>
+  <div id="hint">▲▼ radio · ◀▶ fondo · OK pausa</div>
+</div>
+<script>
+var STATIONS = [{"id": "5yx6BWlEVcY", "name": "Chillhop Radio - jazzy & lofi hip hop beats 🐾"}, {"id": "7NOSDKb0HlU", "name": "lofi hip hop radio - beats to study/relax to 🐾"}, {"id": "blAFxjhg62k", "name": "Coffee Shop Radio - 24/7 Chill Lo-Fi & Jazzy Beats"}, {"id": "TfmECBzmOn4", "name": "Lofi Hip Hop Radio 🍉 Relaxing Beats to Study, Sleep, Chill to"}, {"id": "lkcjlTqmoDY", "name": "videogame lofi & chill beats 💾 pixel art backgrounds"}, {"id": "i6WzngxTnBA", "name": "late night vibes radio - calm lofi / dreamy beats 😴"}, {"id": "UedTcufyrHc", "name": "ChillSynth FM - lofi synthwave radio for retro dreaming"}, {"id": "FWjZ0x2M8og", "name": "lofi hip hop radio 😴 sad & sleepy beats"}, {"id": "qH3fETPsqXU", "name": "【24/7 CHILL LOFI HIP HOP RADIO】beats to sleep/relax/study to"}, {"id": "BLIKwfIJIyo", "name": "Space Ambient Music LIVE 24/7: Ambient Cosmic Background for Sleep"}];
+var GIFS = ["2yzgWbRc97QOIUpklz","fqtxCwUd2t6dCzILMq","3dhmyq6EKw2x7eFt4X","3oEjHGokRZdOBbcZuo","wKnqovL33x9in9ci6X","KETTXY34XNgWZBxvqx","NKEt9elQ5cR68","Basrh159dGwKY","mJhkYA1gnvY7r481qL","dvreHY4p06lzVSDrvj","8vRvucL4OhyjyM4A8T","gfld3S4CsRXRZjqEj3","7bEpr3NIPNY0E","QLgtN0msAekg3x7YTm","dsd7XbYg0e6hG0A7i8","YRK6HL1CEMUxZHLvjl","YRQfWgn1De4nYLLQBa","NnMH7LDpZTPZS","xUOwGcu6wd0cXBj5n2","3o6nV7ygKBVCmLPpJu","p71BYIPogqBPy","2seKKLp1n0sEeJLYTK","PXj1J0eMONGOA","5torEEM8QnR95Cqg11","He1ppTVuaVSCs","97e6IX0kayYTK","3gTmgzy7wYJfyaGRHQ","3nbxypT20Ulmo","v2WuhMBzb3h5e","ZyFCksxxD9tmLYfGJo","j5zqQSABpeHCU8EpO3","TNTyFBi6r9R6g","7FvaPVEKXuB3O","Wci9oW5MbO6PK","qvkaMMMqyGFjO","4oHyOIBIt57ag","lkceXNDw4Agryfrwz8","SJhhRPXjaTGe5MKz5N","4YZNYcTybcYTnROykG","RcRYrpC1pBvIB0icDm","9LZTcawH3mc8V2oUqk","pVGsAWjzvXcZW4ZBTE","2SYqgPxMm2kbVe3y02","tvU9iTev6uBIQ","H62NM1ab7wzMXURdoi","l1BgQOc1Jj7L86BA4","gH1jGsCnQBiFHWMFzh","11fHSR7hmRLbkA","ckr4W2ppxPBeIF8dx4","vMSXa7KFGx49aeeXhe","ZCZ7FHlu3sPek3h0zP","9jwuxt5bXKadi","6705G9I9sUcNCaJF10"];
+var STATICS = ["static1","static2","static3","static4","static5","static6","static7","static8"];
+function gif(name) { return "https://media.lofi.cafe/v1/gifs/" + name + ".gif"; }
+function load(key, max) { var v = parseInt(localStorage.getItem(key), 10); return v >= 0 && v < max ? v : 0; }
+
+var station = load("station", STATIONS.length);
+var bgIndex = load("gif", GIFS.length);
+var player = null, ready = false, playing = true, hideTimer = null, staticTimer = null, errorTimer = null;
+
+function showInfo() {
+  var s = STATIONS[station];
+  document.getElementById("num").textContent = "RADIO " + (station + 1) + "/" + STATIONS.length;
+  document.getElementById("name").textContent = s.name;
+  document.getElementById("state").textContent = !ready ? "conectando…" : playing ? "▶ en vivo" : "❚❚ en pausa";
+  var info = document.getElementById("info");
+  info.classList.remove("hidden");
+  clearTimeout(hideTimer);
+  hideTimer = setTimeout(function () { info.classList.add("hidden"); }, 5000);
+}
+
+function flashStatic() {
+  var img = document.getElementById("static");
+  img.src = gif(STATICS[Math.floor(Math.random() * STATICS.length)]);
+  img.style.display = "block";
+  clearTimeout(staticTimer);
+  staticTimer = setTimeout(function () { img.style.display = "none"; }, 700);
+}
+
+function setBackground() {
+  document.getElementById("bg").src = gif(GIFS[bgIndex]);
+  localStorage.setItem("gif", bgIndex);
+}
+
+function tune() {
+  localStorage.setItem("station", station);
+  playing = true;
+  flashStatic();
+  if (ready) player.loadVideoById(STATIONS[station].id);
+  showInfo();
+}
+
+function onKey(key) {
+  if (key === "up" || key === "down") {
+    station = (station + (key === "up" ? 1 : -1) + STATIONS.length) % STATIONS.length;
+    tune();
+  } else if (key === "left" || key === "right") {
+    bgIndex = (bgIndex + (key === "right" ? 1 : -1) + GIFS.length) % GIFS.length;
+    flashStatic();
+    setBackground();
+  } else if (key === "ok") {
+    if (ready) {
+      if (playing) player.pauseVideo(); else player.playVideo();
+      playing = !playing;
+    }
+    showInfo();
+  }
+}
+
+function onYouTubeIframeAPIReady() {
+  player = new YT.Player("player", {
+    width: 320, height: 180,
+    videoId: STATIONS[station].id,
+    playerVars: { autoplay: 1, controls: 0, modestbranding: 1, playsinline: 1, rel: 0 },
+    events: {
+      onReady: function (e) { ready = true; e.target.setVolume(100); e.target.playVideo(); showInfo(); },
+      onStateChange: function (e) {
+        if (e.data === YT.PlayerState.PLAYING) { playing = true; }
+        if (e.data === YT.PlayerState.ENDED) { player.loadVideoById(STATIONS[station].id); }
+      },
+      // A station that is offline or not embeddable: move on to the next one.
+      onError: function () {
+        clearTimeout(errorTimer);
+        errorTimer = setTimeout(function () { onKey("up"); }, 3000);
+      }
+    }
+  });
+}
+
+function tick() {
+  var d = new Date();
+  document.getElementById("clock").textContent =
+    ("0" + d.getHours()).slice(-2) + ":" + ("0" + d.getMinutes()).slice(-2);
+}
+setInterval(tick, 10000);
+tick();
+setBackground();
+showInfo();
+
+var tag = document.createElement("script");
+tag.src = "https://www.youtube.com/iframe_api";
+document.head.appendChild(tag);
+</script>
+</body>
+</html>
